@@ -38,6 +38,8 @@ int16_t desired_torque_last = 0;       // last desired steer torque
 int16_t rt_torque_last = 0;            // last desired torque for real time check
 uint32_t ts_last = 0;
 
+int16_t desired_angle_last = 0;       // last desired steer angle
+
 static void toyota_rx_hook(CAN_FIFOMailBox_TypeDef *to_push) {
 
   // EPS torque sensor
@@ -123,6 +125,27 @@ static int toyota_tx_hook(CAN_FIFOMailBox_TypeDef *to_send) {
     // STEER ANGLE
     if ((to_send->RIR>>21) == 0x266) {
       angle_control = 1;
+
+      int desired_angle = ((to_send->RDLR & 0xf) << 8) + ((to_send->RDLR & 0xff00) >> 8);
+      int16_t violation = 0;
+
+      if (desired_angle > 0x800) {
+        desired_angle -= 0x1000;
+      }
+
+      int angle_rate_lim = 0;    //TBD
+
+      if (controls_allowed &&
+          ((desired_angle > (desired_angle_last + angle_rate_lim)) ||
+           (desired_angle > (desired_angle_last - angle_rate_lim)))) {
+        violation = 1;
+      }
+
+      desired_angle_last = desired_angle;
+
+      if (violation) {
+        return false;
+      }
     }
 
     // STEER TORQUE: safety check on bytes 2-3
